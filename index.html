@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>OLCE · Visionneuse 3D immersive</title>
+<script src="https://aframe.io/releases/1.7.1/aframe.min.js"></script>
+<style>
+  :root{
+    --sea:#0e1f2b; --sea2:#132c3a; --foam:#eaf1f4; --muted:#8aa4b2;
+    --tide:#57c4ad; --line:rgba(138,164,178,.18);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+       color:var(--foam);background:var(--sea)}
+  #ui{position:fixed;top:18px;left:18px;z-index:10;
+      width:min(320px,calc(100vw - 36px));
+      background:linear-gradient(180deg,rgba(19,44,58,.92),rgba(14,31,43,.92));
+      border:1px solid var(--line);border-radius:14px;padding:18px 18px 16px;
+      -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+      box-shadow:0 18px 50px rgba(0,0,0,.35)}
+  .kicker{font-family:ui-monospace,"SFMono-Regular",Menlo,monospace;
+          font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--tide)}
+  h1{font-size:17px;margin:6px 0 3px;font-weight:600;letter-spacing:-.01em}
+  p.sub{margin:0 0 14px;font-size:12.5px;color:var(--muted);line-height:1.45}
+  .models{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+  button.model{display:flex;justify-content:space-between;align-items:center;gap:10px;
+      text-align:left;border:1px solid var(--line);background:rgba(255,255,255,.02);
+      color:var(--foam);padding:9px 11px;border-radius:9px;font-size:13px;
+      cursor:pointer;font-family:inherit;transition:border-color .15s,background .15s}
+  button.model:hover{border-color:var(--tide);background:rgba(87,196,173,.08)}
+  button.model.active{border-color:var(--tide);background:rgba(87,196,173,.14)}
+  button.model .sz{font-family:ui-monospace,monospace;font-size:11px;color:var(--muted)}
+  .help{border-top:1px solid var(--line);padding-top:12px;font-size:11.5px;
+        color:var(--muted);line-height:1.65}
+  .help b{color:var(--foam);font-weight:600}
+  .help .k{font-family:ui-monospace,monospace;color:var(--tide);white-space:nowrap}
+  .loading{position:fixed;bottom:22px;left:18px;z-index:10;font-family:ui-monospace,monospace;
+           font-size:12px;color:var(--tide);opacity:0;transition:opacity .2s}
+  .loading.on{opacity:1}
+</style>
+</head>
+<body>
+  <div id="ui">
+    <div class="kicker">OLCE · Côte d'Émeraude</div>
+    <h1>Visionneuse 3D immersive</h1>
+    <p class="sub">Choisis un modèle, puis touche l'icône casque (en bas à droite) pour entrer en VR.</p>
+    <div class="models" id="modelList"></div>
+    <div class="help">
+      <b>Vol libre — manettes</b><br>
+      <span class="k">Stick gauche</span> · avancer / reculer / latéral<br>
+      <span class="k">Stick droit ↕</span> · monter / descendre<br>
+      <span class="k">Stick droit ↔</span> · pivoter<br>
+      <span class="k">Gâchette</span> · accélérer<br>
+      <span class="k">A / B</span> · modèle suivant / précédent<br>
+      <span style="opacity:.72">Sur ordinateur (test) : <span class="k">ZQSD/WASD</span> + souris.</span>
+    </div>
+  </div>
+  <div class="loading" id="loading">chargement du modèle…</div>
+
+  <a-scene renderer="colorManagement: true; antialias: true; highRefreshRate: true"
+           background="color: #0e1f2b" vr-mode-ui="enabled: true">
+
+    <!-- éclairage neutre : restitue fidèlement les couleurs photogrammétriques -->
+    <a-entity light="type: ambient; intensity: 1.0"></a-entity>
+    <a-entity light="type: hemisphere; color: #cfe0ea; groundColor: #3a2f28; intensity: 0.7"></a-entity>
+    <a-entity light="type: directional; intensity: 0.45" position="3 5 2"></a-entity>
+
+    <!-- les modèles sont injectés ici -->
+    <a-entity id="gallery" model-gallery></a-entity>
+
+    <!-- le joueur : caméra + deux manettes, déplacé par le composant free-fly -->
+    <a-entity id="rig" free-fly>
+      <a-entity camera position="0 1.6 0"
+                look-controls="pointerLockEnabled: false"
+                wasd-controls="acceleration: 30"></a-entity>
+      <a-entity id="leftHand"  laser-controls="hand: left"></a-entity>
+      <a-entity id="rightHand" laser-controls="hand: right"></a-entity>
+    </a-entity>
+
+    <!-- grille de référence au sol (aide à l'orientation en vol libre) -->
+    <a-entity scene-grid></a-entity>
+  </a-scene>
+
+<script>
+  /* =================== CONFIG : TES MODÈLES ===================
+     Dépose tes .glb dans un dossier "models/" placé à côté de ce
+     fichier index.html, puis ajoute une ligne ci-dessous.
+     "sz" est purement indicatif (affiché dans le menu).
+     L'ordre ici = l'ordre de défilement avec les boutons A / B.      */
+  const MODELS = [
+    { name: "Astronaute (démo)",      url: "https://modelviewer.dev/shared-assets/models/Astronaut.glb", sz: "démo" },
+    { name: "Phoque", url: "models/28_06_2025_quest.glb", sz: "13.6 Mo" },
+    // { name: "Mon scan",            url: "models/mon_scan.glb",           sz: "" },
+  ];
+  /* ============================================================ */
+
+  // --- grille de sol ---
+  AFRAME.registerComponent('scene-grid', {
+    init(){
+      const THREE = AFRAME.THREE;
+      const g = new THREE.GridHelper(300, 300, 0x57c4ad, 0x2a3b46);
+      g.material.opacity = 0.22; g.material.transparent = true;
+      this.el.setObject3D('grid', g);
+    }
+  });
+
+  // --- gestion des modèles : chargement, recentrage, cadrage, défilement ---
+  AFRAME.registerComponent('model-gallery', {
+    init(){
+      this.index = 0;
+      this.entity = document.createElement('a-entity');
+      this.el.appendChild(this.entity);
+      this.entity.addEventListener('model-loaded', () => this.onLoaded());
+      this.entity.addEventListener('model-error',  () => this.setLoading(false));
+      this.buildUI();
+      this.load(0);
+    },
+    setLoading(on){ document.getElementById('loading').classList.toggle('on', on); },
+    buildUI(){
+      const list = document.getElementById('modelList'); list.innerHTML = '';
+      MODELS.forEach((m, i) => {
+        const b = document.createElement('button');
+        b.className = 'model'; b.dataset.i = i;
+        b.innerHTML = `<span>${m.name}</span><span class="sz">${m.sz||''}</span>`;
+        b.addEventListener('click', () => this.load(i));
+        list.appendChild(b);
+      });
+    },
+    syncUI(){
+      document.querySelectorAll('#modelList .model').forEach(b =>
+        b.classList.toggle('active', +b.dataset.i === this.index));
+    },
+    load(i){
+      this.index = (i % MODELS.length + MODELS.length) % MODELS.length;
+      this.setLoading(true);
+      this.entity.setAttribute('gltf-model', MODELS[this.index].url);
+      this.syncUI();
+    },
+    next(){ this.load(this.index + 1); },
+    prev(){ this.load(this.index - 1); },
+    onLoaded(){
+      this.setLoading(false);
+      const THREE = AFRAME.THREE;
+      const mesh = this.entity.getObject3D('mesh'); if (!mesh) return;
+      const box = new THREE.Box3().setFromObject(mesh);
+      const c = box.getCenter(new THREE.Vector3());
+      const s = box.getSize(new THREE.Vector3());
+      // recentre horizontalement, pose la base du modèle au sol (y = 0)
+      this.entity.object3D.position.set(-c.x, -box.min.y, -c.z);
+      // replace le joueur pour cadrer le modèle au chargement
+      const span = Math.max(s.x, s.z) || 2;
+      const rig = document.getElementById('rig').object3D;
+      rig.position.set(0, Math.min(s.y * 0.6 + 1.0, 4), span * 0.9 + 2.5);
+      rig.rotation.set(0, 0, 0);
+    }
+  });
+
+  // --- locomotion VOL LIBRE (lecture brute des manettes WebXR) ---
+  AFRAME.registerComponent('free-fly', {
+    schema: { speed:{default:2.2}, turn:{default:90}, boost:{default:3.2} },
+    init(){ this.prev = {A:false, B:false}; this.cam = this.el.querySelector('[camera]'); },
+    tick(t, dt){
+      if (!dt) return;
+      const sceneEl = this.el.sceneEl;
+      const xr = sceneEl.renderer && sceneEl.renderer.xr;
+      const session = xr && xr.getSession && xr.getSession();
+      if (!session) return;                 // hors VR : ZQSD/souris gèrent le déplacement
+      const THREE = AFRAME.THREE, d = dt/1000, dz = v => Math.abs(v) < 0.12 ? 0 : v;
+      let L = {x:0,y:0}, R = {x:0,y:0}, boost = 1, A = false, B = false;
+
+      for (const src of session.inputSources){
+        const gp = src.gamepad; if (!gp) continue;
+        const ax = gp.axes;
+        const sx = ax.length >= 4 ? ax[2] : ax[0];
+        const sy = ax.length >= 4 ? ax[3] : ax[1];
+        const trig = gp.buttons[0] && gp.buttons[0].pressed;
+        if (src.handedness === 'left'){  L.x = dz(sx); L.y = dz(sy); if (trig) boost = this.data.boost; }
+        if (src.handedness === 'right'){ R.x = dz(sx); R.y = dz(sy); if (trig) boost = this.data.boost;
+          A = gp.buttons[4] && gp.buttons[4].pressed;
+          B = gp.buttons[5] && gp.buttons[5].pressed;
+        }
+      }
+
+      // direction d'après l'orientation de la tête, projetée à l'horizontale
+      const q = new THREE.Quaternion(); this.cam.object3D.getWorldQuaternion(q);
+      const fwd = new THREE.Vector3(0,0,-1).applyQuaternion(q); fwd.y = 0;
+      if (fwd.lengthSq() > 1e-6) fwd.normalize();
+      const right = new THREE.Vector3(1,0,0).applyQuaternion(q); right.y = 0;
+      if (right.lengthSq() > 1e-6) right.normalize();
+
+      const sp = this.data.speed * boost * d;
+      const mv = new THREE.Vector3();
+      mv.addScaledVector(fwd,  -L.y * sp);   // stick gauche vers le haut = avancer
+      mv.addScaledVector(right, L.x * sp);   // latéral
+      mv.y += -R.y * sp;                      // stick droit vers le haut = monter
+      this.el.object3D.position.add(mv);
+      this.el.object3D.rotation.y -= R.x * (this.data.turn * Math.PI/180) * d;
+
+      // défilement des modèles (front montant uniquement)
+      const g = document.getElementById('gallery').components['model-gallery'];
+      if (g){
+        if (A && !this.prev.A) g.next();
+        if (B && !this.prev.B) g.prev();
+      }
+      this.prev.A = A; this.prev.B = B;
+    }
+  });
+</script>
+</body>
+</html>
