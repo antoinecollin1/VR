@@ -58,18 +58,18 @@
     </div>
   </div>
   <div class="loading" id="loading">chargement du modèle…</div>
-
+ 
   <a-scene renderer="colorManagement: true; antialias: true; highRefreshRate: true"
            background="color: #0e1f2b" vr-mode-ui="enabled: true">
-
+ 
     <!-- éclairage neutre : restitue fidèlement les couleurs photogrammétriques -->
     <a-entity light="type: ambient; intensity: 1.0"></a-entity>
     <a-entity light="type: hemisphere; color: #cfe0ea; groundColor: #3a2f28; intensity: 0.7"></a-entity>
     <a-entity light="type: directional; intensity: 0.45" position="3 5 2"></a-entity>
-
+ 
     <!-- les modèles sont injectés ici -->
     <a-entity id="gallery" model-gallery></a-entity>
-
+ 
     <!-- le joueur : caméra + deux manettes, déplacé par le composant free-fly -->
     <a-entity id="rig" free-fly>
       <a-entity camera position="0 1.6 0"
@@ -78,11 +78,11 @@
       <a-entity id="leftHand"  laser-controls="hand: left"></a-entity>
       <a-entity id="rightHand" laser-controls="hand: right"></a-entity>
     </a-entity>
-
+ 
     <!-- grille de référence au sol (aide à l'orientation en vol libre) -->
     <a-entity scene-grid></a-entity>
   </a-scene>
-
+ 
 <script>
   /* =================== CONFIG : TES MODÈLES ===================
      Dépose tes .glb dans un dossier "models/" placé à côté de ce
@@ -96,17 +96,20 @@
     // { name: "Mon scan",            url: "models/mon_scan.glb",           sz: "" },
   ];
   /* ============================================================ */
-
-  // --- grille de sol ---
+ 
+  // --- grille de sol (s'adapte à l'emprise du modèle) ---
   AFRAME.registerComponent('scene-grid', {
-    init(){
+    init(){ this.build(300); },
+    build(size){
       const THREE = AFRAME.THREE;
-      const g = new THREE.GridHelper(300, 300, 0x57c4ad, 0x2a3b46);
+      const div = Math.min(300, Math.max(20, Math.round(size / 10)));
+      const g = new THREE.GridHelper(size, div, 0x57c4ad, 0x2a3b46);
       g.material.opacity = 0.22; g.material.transparent = true;
       this.el.setObject3D('grid', g);
-    }
+    },
+    resize(span){ this.build(Math.min(Math.max(span * 1.5, 60), 4000)); }
   });
-
+ 
   // --- gestion des modèles : chargement, recentrage, cadrage, défilement ---
   AFRAME.registerComponent('model-gallery', {
     init(){
@@ -150,14 +153,21 @@
       const s = box.getSize(new THREE.Vector3());
       // recentre horizontalement, pose la base du modèle au sol (y = 0)
       this.entity.object3D.position.set(-c.x, -box.min.y, -c.z);
-      // replace le joueur pour cadrer le modèle au chargement
+      // cadrage + vitesse ADAPTÉS à la taille du modèle (petit objet OU relevé de plusieurs km)
       const span = Math.max(s.x, s.z) || 2;
-      const rig = document.getElementById('rig').object3D;
-      rig.position.set(0, Math.min(s.y * 0.6 + 1.0, 4), span * 0.9 + 2.5);
-      rig.rotation.set(0, 0, 0);
+      const rigEl = document.getElementById('rig');
+      const h    = Math.min(Math.max(span * 0.12, 1.6), 200);   // hauteur de départ
+      const back = Math.min(Math.max(span * 0.35, 3),   700);   // recul de départ
+      rigEl.object3D.position.set(0, h, back);
+      rigEl.object3D.rotation.set(0, 0, 0);
+      // vitesse de vol proportionnelle à l'emprise (bien plus rapide à la gâchette)
+      rigEl.setAttribute('free-fly', 'speed', Math.min(Math.max(span / 35, 1.5), 60));
+      // adapte la grille de référence
+      const gridEl = document.querySelector('[scene-grid]');
+      if (gridEl && gridEl.components['scene-grid']) gridEl.components['scene-grid'].resize(span);
     }
   });
-
+ 
   // --- locomotion VOL LIBRE (lecture brute des manettes WebXR) ---
   AFRAME.registerComponent('free-fly', {
     schema: { speed:{default:2.2}, turn:{default:90}, boost:{default:3.2} },
@@ -170,7 +180,7 @@
       if (!session) return;                 // hors VR : ZQSD/souris gèrent le déplacement
       const THREE = AFRAME.THREE, d = dt/1000, dz = v => Math.abs(v) < 0.12 ? 0 : v;
       let L = {x:0,y:0}, R = {x:0,y:0}, boost = 1, A = false, B = false;
-
+ 
       for (const src of session.inputSources){
         const gp = src.gamepad; if (!gp) continue;
         const ax = gp.axes;
@@ -183,14 +193,14 @@
           B = gp.buttons[5] && gp.buttons[5].pressed;
         }
       }
-
+ 
       // direction d'après l'orientation de la tête, projetée à l'horizontale
       const q = new THREE.Quaternion(); this.cam.object3D.getWorldQuaternion(q);
       const fwd = new THREE.Vector3(0,0,-1).applyQuaternion(q); fwd.y = 0;
       if (fwd.lengthSq() > 1e-6) fwd.normalize();
       const right = new THREE.Vector3(1,0,0).applyQuaternion(q); right.y = 0;
       if (right.lengthSq() > 1e-6) right.normalize();
-
+ 
       const sp = this.data.speed * boost * d;
       const mv = new THREE.Vector3();
       mv.addScaledVector(fwd,  -L.y * sp);   // stick gauche vers le haut = avancer
@@ -198,7 +208,7 @@
       mv.y += -R.y * sp;                      // stick droit vers le haut = monter
       this.el.object3D.position.add(mv);
       this.el.object3D.rotation.y -= R.x * (this.data.turn * Math.PI/180) * d;
-
+ 
       // défilement des modèles (front montant uniquement)
       const g = document.getElementById('gallery').components['model-gallery'];
       if (g){
