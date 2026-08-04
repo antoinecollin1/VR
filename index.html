@@ -6,6 +6,315 @@
 <title>OLCE · Visionneuse 3D immersive</title>
 <script src="https://aframe.io/releases/1.7.1/aframe.min.js"></script>
 <style>
+  :root{ --sea:#0e1f2b; --sea2:#132c3a; --foam:#eaf1f4; --muted:#8aa4b2; --tide:#57c4ad; --line:rgba(138,164,178,.18); }
+  *{box-sizing:border-box} html,body{margin:0;height:100%}
+  body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--foam);background:var(--sea)}
+  #ui{position:fixed;top:18px;left:18px;z-index:10;width:min(330px,calc(100vw - 36px));max-height:calc(100vh - 36px);overflow:auto;
+      background:linear-gradient(180deg,rgba(19,44,58,.92),rgba(14,31,43,.92));border:1px solid var(--line);border-radius:14px;
+      padding:18px 18px 16px;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);box-shadow:0 18px 50px rgba(0,0,0,.35)}
+  .kicker{font-family:ui-monospace,"SFMono-Regular",Menlo,monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--tide)}
+  h1{font-size:17px;margin:6px 0 3px;font-weight:600;letter-spacing:-.01em}
+  p.sub{margin:0 0 14px;font-size:12.5px;color:var(--muted);line-height:1.45}
+  .models{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+  button.model{display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;border:1px solid var(--line);
+      background:rgba(255,255,255,.02);color:var(--foam);padding:9px 11px;border-radius:9px;font-size:13px;cursor:pointer;
+      font-family:inherit;transition:border-color .15s,background .15s}
+  button.model:hover{border-color:var(--tide);background:rgba(87,196,173,.08)}
+  button.model.active{border-color:var(--tide);background:rgba(87,196,173,.14)}
+  button.model .sz{font-family:ui-monospace,monospace;font-size:11px;color:var(--muted)}
+  .block{border-top:1px solid var(--line);padding-top:13px;margin-bottom:13px}
+  .block .kicker{display:block;margin-bottom:9px}
+  input[type=range]{width:100%;accent-color:var(--tide);cursor:pointer}
+  .lvlrow{display:flex;justify-content:space-between;align-items:baseline;margin-top:6px;font-size:12px;color:var(--muted)}
+  .lvlval{font-family:ui-monospace,monospace;color:var(--tide);font-size:12.5px}
+  .help{border-top:1px solid var(--line);padding-top:12px;font-size:11.5px;color:var(--muted);line-height:1.65}
+  .help b{color:var(--foam);font-weight:600}
+  .help .k{font-family:ui-monospace,monospace;color:var(--tide);white-space:nowrap}
+  .loading{position:fixed;bottom:22px;left:18px;z-index:10;font-family:ui-monospace,monospace;font-size:12px;color:var(--tide);opacity:0;transition:opacity .2s}
+  .loading.on{opacity:1}
+</style>
+</head>
+<body>
+  <div id="ui">
+    <div class="kicker">OLCE · Côte d'Émeraude</div>
+    <h1>Visionneuse 3D immersive</h1>
+    <p class="sub">Choisis un modèle, puis touche l'icône casque (en bas à droite) pour entrer en VR.</p>
+    <div class="models" id="modelList"></div>
+    <div class="block">
+      <span class="kicker">Submersion</span>
+      <input type="range" id="lvl" min="-1" max="5" step="0.05" value="0">
+      <div class="lvlrow"><span>Niveau d'eau</span><span id="lvlOut" class="lvlval">—</span></div>
+    </div>
+    <div class="help">
+      <b>Vol libre — manettes</b><br>
+      <span class="k">Stick gauche</span> · avancer / reculer / latéral<br>
+      <span class="k">Stick droit ↕</span> · monter / descendre &nbsp;·&nbsp; <span class="k">↔</span> pivoter<br>
+      <span class="k">Gâchette</span> · accélérer<br>
+      <span class="k">A / B (droite)</span> · modèle suivant / précédent<br>
+      <span class="k">X / Y (gauche)</span> · baisser / monter l'eau<br>
+      <span style="opacity:.72">Ordinateur (test) : <span class="k">ZQSD</span>+souris, <span class="k">R/F</span> eau.</span>
+    </div>
+  </div>
+  <div class="loading" id="loading">chargement du modèle…</div>
+
+  <a-scene renderer="colorManagement: true; antialias: true; highRefreshRate: true" background="color: #0e1f2b" vr-mode-ui="enabled: true">
+    <a-entity light="type: ambient; intensity: 1.0"></a-entity>
+    <a-entity light="type: hemisphere; color: #cfe0ea; groundColor: #3a2f28; intensity: 0.7"></a-entity>
+    <a-entity light="type: directional; intensity: 0.45" position="3 5 2"></a-entity>
+
+    <a-entity id="gallery" model-gallery></a-entity>
+    <a-entity id="water" water-surface></a-entity>
+
+    <a-entity id="rig" free-fly>
+      <a-entity camera position="0 1.6 0" look-controls="pointerLockEnabled: false" wasd-controls="acceleration: 30"></a-entity>
+      <a-entity id="leftHand"  laser-controls="hand: left"></a-entity>
+      <a-entity id="rightHand" laser-controls="hand: right"></a-entity>
+    </a-entity>
+
+    <a-entity scene-grid></a-entity>
+  </a-scene>
+
+<script>
+  /* =================== CONFIG : TES MODÈLES ===================
+     Dépose tes .glb dans "models/" à côté de ce fichier, puis ajoute une ligne.
+     noWater:true  -> pas de mer (planètes, petits objets)
+     datum:<cote>  -> cote réelle (m NGF) du POINT LE PLUS BAS du scan : la jauge
+                      de submersion affichera alors "≈ X m NGF" au lieu du relatif. */
+  const MODELS = [
+    { name: "Phoque",       url: "models/phoque.glb",     sz: "13.6 Mo" },
+    { name: "Pont Kalleg",  url: "models/pontkalleg.glb", sz: "20 Mo", datum: -17.33 },
+    { name: "Terre (NASA)", url: "models/Earth.glb", sz: "1.6 Mo", noWater: true },
+    { name: "Lune (NASA)",  url: "models/Moon.glb",  sz: "1.0 Mo", noWater: true },
+    // { name: "Astronaute (démo)", url: "https://modelviewer.dev/shared-assets/models/Astronaut.glb", sz: "démo", noWater: true },
+  ];
+
+  /* =================== CONFIG : MER / HOULE =================== */
+  const SEA = { dirDeg: 0, amplitude: 0.18, wavelength: 7.0, steepness: 0.62, timeScale: 1.0,
+                startFraction: 0.35, shallow: '#5fa8b8', deep: '#0d3a4f', opacity: 0.62 };
+  /* =========================================================== */
+
+  // --- grille de sol (s'adapte à l'emprise du modèle) ---
+  AFRAME.registerComponent('scene-grid', {
+    init(){ this.build(300); },
+    build(size){
+      const THREE = AFRAME.THREE;
+      const div = Math.min(300, Math.max(20, Math.round(size / 10)));
+      const g = new THREE.GridHelper(size, div, 0x57c4ad, 0x2a3b46);
+      g.material.opacity = 0.22; g.material.transparent = true;
+      this.el.setObject3D('grid', g);
+    },
+    resize(span){ this.build(Math.min(Math.max(span * 1.5, 60), 4000)); }
+  });
+
+  // --- gestion des modèles ---
+  AFRAME.registerComponent('model-gallery', {
+    init(){
+      this.index = 0;
+      this.entity = document.createElement('a-entity');
+      this.el.appendChild(this.entity);
+      this.entity.addEventListener('model-loaded', () => this.onLoaded());
+      this.entity.addEventListener('model-error',  () => this.setLoading(false));
+      this.buildUI();
+      this.load(0);
+    },
+    setLoading(on){ document.getElementById('loading').classList.toggle('on', on); },
+    buildUI(){
+      const list = document.getElementById('modelList'); list.innerHTML = '';
+      MODELS.forEach((m, i) => {
+        const b = document.createElement('button');
+        b.className = 'model'; b.dataset.i = i;
+        b.innerHTML = '<span>' + m.name + '</span><span class="sz">' + (m.sz||'') + '</span>';
+        b.addEventListener('click', () => this.load(i));
+        list.appendChild(b);
+      });
+    },
+    syncUI(){ document.querySelectorAll('#modelList .model').forEach(b => b.classList.toggle('active', +b.dataset.i === this.index)); },
+    load(i){
+      this.index = (i % MODELS.length + MODELS.length) % MODELS.length;
+      this.noWater = !!MODELS[this.index].noWater;
+      this.datum = (MODELS[this.index].datum === undefined) ? null : MODELS[this.index].datum;
+      this.setLoading(true);
+      this.entity.setAttribute('gltf-model', MODELS[this.index].url);
+      this.syncUI();
+    },
+    next(){ this.load(this.index + 1); },
+    prev(){ this.load(this.index - 1); },
+    onLoaded(){
+      this.setLoading(false);
+      const THREE = AFRAME.THREE;
+      const mesh = this.entity.getObject3D('mesh'); if (!mesh) return;
+      const box = new THREE.Box3().setFromObject(mesh);
+      const c = box.getCenter(new THREE.Vector3());
+      const s = box.getSize(new THREE.Vector3());
+      this.entity.object3D.position.set(-c.x, -box.min.y, -c.z);
+      // cadrage + vitesse ADAPTÉS à la taille (petit objet OU relevé kilométrique)
+      const span = Math.max(s.x, s.z) || 2;
+      const rigEl = document.getElementById('rig');
+      const h    = Math.min(Math.max(span * 0.12, 1.6), 200);
+      const back = Math.min(Math.max(span * 0.35, 3),   700);
+      rigEl.object3D.position.set(0, h, back);
+      rigEl.object3D.rotation.set(0, 0, 0);
+      rigEl.setAttribute('free-fly', 'speed', Math.min(Math.max(span / 35, 1.5), 60));
+      const gridEl = document.querySelector('[scene-grid]');
+      if (gridEl && gridEl.components['scene-grid']) gridEl.components['scene-grid'].resize(span);
+      // mer
+      const wEl = document.getElementById('water');
+      const water = wEl && wEl.components['water-surface'];
+      if (water){ if (this.noWater) water.hide(); else water.configure(span, s.y, this.datum); }
+    }
+  });
+
+  // --- surface d'eau animée (houle de Gerstner) + niveau de submersion ---
+  AFRAME.registerComponent('water-surface', {
+    init(){
+      const THREE = AFRAME.THREE;
+      this.level = 0; this.minLevel = -1; this.maxLevel = 5; this.datum = null;
+      const rad = SEA.dirDeg * Math.PI/180;
+      this.uniforms = {
+        uTime:{value:0}, uDir:{value:new THREE.Vector2(Math.sin(rad),-Math.cos(rad)).normalize()},
+        uAmp:{value:SEA.amplitude}, uLambda:{value:SEA.wavelength}, uSteep:{value:SEA.steepness},
+        uShallow:{value:new THREE.Color(SEA.shallow)}, uDeep:{value:new THREE.Color(SEA.deep)},
+        uLightDir:{value:new THREE.Vector3(3,5,2).normalize()}, uOpacity:{value:SEA.opacity}
+      };
+      this.material = new THREE.ShaderMaterial({ uniforms:this.uniforms, transparent:true,
+        side:THREE.DoubleSide, depthWrite:false, vertexShader:this.vert(), fragmentShader:this.frag() });
+      this.mesh = new THREE.Mesh(this.buildGrid(40,64), this.material);
+      this.el.setObject3D('water', this.mesh);
+      this.el.object3D.visible = false;
+      this.slider = document.getElementById('lvl');
+      this.out = document.getElementById('lvlOut');
+      this.slider.addEventListener('input', () => this.setLevel(parseFloat(this.slider.value)));
+      window.addEventListener('keydown', e => { if (e.code==='KeyR') this.nudge(0.2); if (e.code==='KeyF') this.nudge(-0.2); });
+      const cam = document.querySelector('#rig [camera]');
+      if (cam){
+        const hud = document.createElement('a-text');
+        hud.setAttribute('value',''); hud.setAttribute('align','center'); hud.setAttribute('color','#eaf1f4');
+        hud.setAttribute('width','1.6'); hud.setAttribute('position','0 -0.55 -1.3'); hud.setAttribute('scale','0.5 0.5 0.5');
+        cam.appendChild(hud); this.hud = hud;
+      }
+    },
+    buildGrid(size, seg){
+      const THREE = AFRAME.THREE, pos=[], idx=[];
+      for (let i=0;i<=seg;i++) for (let j=0;j<=seg;j++) pos.push(-size/2+size*i/seg, 0, -size/2+size*j/seg);
+      const row=seg+1;
+      for (let i=0;i<seg;i++) for (let j=0;j<seg;j++){ const a=i*row+j,b=a+1,c=a+row,d=c+1; idx.push(a,c,b,b,c,d); }
+      const g=new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3)); g.setIndex(idx); return g;
+    },
+    configure(span, top, datum){
+      const size = Math.max(span*1.6, 8);
+      const seg = Math.min(320, Math.max(32, Math.round(size/0.4)));
+      this.mesh.geometry.dispose(); this.mesh.geometry = this.buildGrid(size, seg);
+      this.minLevel = -1.0; this.maxLevel = top + 1.0; this.datum = (datum===undefined?null:datum);
+      this.slider.min = this.minLevel.toFixed(2); this.slider.max = this.maxLevel.toFixed(2); this.slider.step = 0.05;
+      this.el.object3D.visible = true;
+      this.setLevel(Math.min(this.maxLevel, Math.max(this.minLevel, top*SEA.startFraction)));
+    },
+    setLevel(y){
+      this.level = Math.min(this.maxLevel, Math.max(this.minLevel, y));
+      this.el.object3D.position.y = this.level;
+      if (this.slider) this.slider.value = this.level;
+      let txt = (this.level>=0?'+':'') + this.level.toFixed(1) + ' m';
+      if (this.datum != null) txt += '  ≈ ' + (this.datum + this.level).toFixed(1) + ' m NGF';
+      if (this.out) this.out.textContent = txt;
+      if (this.hud) this.hud.setAttribute('value', "Niveau d'eau : " + txt);
+    },
+    nudge(dy){ this.setLevel(this.level + dy); },
+    hide(){ this.el.object3D.visible = false; if (this.out) this.out.textContent='—'; if (this.hud) this.hud.setAttribute('value',''); },
+    tick(t, dt){ if (dt) this.uniforms.uTime.value += (dt/1000) * SEA.timeScale; },
+    vert(){ return `
+      uniform float uTime; uniform vec2 uDir; uniform float uAmp; uniform float uLambda; uniform float uSteep;
+      varying vec3 vWorldPos; varying vec3 vN; varying float vCrest;
+      const float PI=3.141592653589793; const float G=9.81;
+      void gerstner(vec2 p, vec2 dir, float lambda, float amp, float Q, inout vec3 disp, inout vec3 nrm){
+        float k=2.0*PI/lambda; float c=sqrt(G/k);
+        float f=k*dot(dir,p)-c*k*uTime; float cf=cos(f), sf=sin(f); float WA=k*amp;
+        disp.x+=Q*amp*dir.x*cf; disp.z+=Q*amp*dir.y*cf; disp.y+=amp*sf;
+        nrm.x+=-dir.x*WA*cf; nrm.z+=-dir.y*WA*cf; nrm.y+=-Q*WA*sf;
+      }
+      void main(){
+        vec3 p=position; vec2 h=vec2(p.x,p.z); vec3 disp=vec3(0.0); vec3 nrm=vec3(0.0);
+        vec2 d0=normalize(uDir);
+        mat2 r1=mat2(cos(0.35),-sin(0.35),sin(0.35),cos(0.35));
+        mat2 r2=mat2(cos(-0.5),-sin(-0.5),sin(-0.5),cos(-0.5));
+        mat2 r3=mat2(cos(0.9),-sin(0.9),sin(0.9),cos(0.9));
+        gerstner(h,d0,        uLambda,      uAmp,      uSteep,     disp,nrm);
+        gerstner(h,r1*d0,     uLambda*0.6,  uAmp*0.55, uSteep*0.9, disp,nrm);
+        gerstner(h,r2*d0,     uLambda*0.33, uAmp*0.30, uSteep*0.8, disp,nrm);
+        gerstner(h,r3*d0,     uLambda*0.18, uAmp*0.18, uSteep*0.7, disp,nrm);
+        vec3 np=p+disp; vCrest=disp.y;
+        vec3 N=normalize(vec3(nrm.x, 1.0+nrm.y, nrm.z));
+        vec4 wp=modelMatrix*vec4(np,1.0); vWorldPos=wp.xyz;
+        vN=normalize(mat3(modelMatrix)*N);
+        gl_Position=projectionMatrix*viewMatrix*wp;
+      }`;
+    },
+    frag(){ return `
+      uniform vec3 uShallow; uniform vec3 uDeep; uniform vec3 uLightDir; uniform float uOpacity; uniform float uAmp;
+      varying vec3 vWorldPos; varying vec3 vN; varying float vCrest;
+      void main(){
+        vec3 N=normalize(vN); vec3 V=normalize(cameraPosition-vWorldPos);
+        if(dot(N,V)<0.0) N=-N;
+        float fres=pow(1.0-max(dot(N,V),0.0),3.0);
+        float diff=clamp(dot(N,normalize(uLightDir))*0.5+0.5,0.0,1.0);
+        vec3 col=mix(uDeep,uShallow,diff);
+        vec3 H=normalize(normalize(uLightDir)+V);
+        col+=pow(max(dot(N,H),0.0),80.0)*0.6;
+        float foam=smoothstep(0.6,1.0, vCrest/max(uAmp*1.6,0.001));
+        col=mix(col,vec3(1.0),foam*0.7);
+        col=mix(col,vec3(0.80,0.90,0.95),fres*0.5);
+        float a=clamp(uOpacity+fres*0.4+foam*0.4,0.0,1.0);
+        gl_FragColor=vec4(col,a);
+      }`;
+    }
+  });
+
+  // --- locomotion VOL LIBRE ---
+  AFRAME.registerComponent('free-fly', {
+    schema: { speed:{default:2.2}, turn:{default:90}, boost:{default:3.2} },
+    init(){ this.prev={A:false,B:false}; this.cam=this.el.querySelector('[camera]'); },
+    tick(t, dt){
+      if (!dt) return;
+      const sceneEl = this.el.sceneEl;
+      const xr = sceneEl.renderer && sceneEl.renderer.xr;
+      const session = xr && xr.getSession && xr.getSession();
+      if (!session) return;
+      const THREE = AFRAME.THREE, d = dt/1000, dz = v => Math.abs(v)<0.12?0:v;
+      let L={x:0,y:0}, R={x:0,y:0}, boost=1, A=false, B=false, lx=false, ly=false;
+      for (const src of session.inputSources){
+        const gp = src.gamepad; if (!gp) continue;
+        const ax = gp.axes; const sx = ax.length>=4?ax[2]:ax[0]; const sy = ax.length>=4?ax[3]:ax[1];
+        const trig = gp.buttons[0] && gp.buttons[0].pressed;
+        if (src.handedness==='left'){ L.x=dz(sx); L.y=dz(sy); if (trig) boost=this.data.boost;
+          lx = gp.buttons[4] && gp.buttons[4].pressed; ly = gp.buttons[5] && gp.buttons[5].pressed; }
+        if (src.handedness==='right'){ R.x=dz(sx); R.y=dz(sy); if (trig) boost=this.data.boost;
+          A = gp.buttons[4] && gp.buttons[4].pressed; B = gp.buttons[5] && gp.buttons[5].pressed; }
+      }
+      const q = new THREE.Quaternion(); this.cam.object3D.getWorldQuaternion(q);
+      const fwd = new THREE.Vector3(0,0,-1).applyQuaternion(q); fwd.y=0; if (fwd.lengthSq()>1e-6) fwd.normalize();
+      const right = new THREE.Vector3(1,0,0).applyQuaternion(q); right.y=0; if (right.lengthSq()>1e-6) right.normalize();
+      const sp = this.data.speed * boost * d;
+      const mv = new THREE.Vector3();
+      mv.addScaledVector(fwd,  -L.y * sp); mv.addScaledVector(right, L.x * sp); mv.y += -R.y * sp;
+      this.el.object3D.position.add(mv);
+      this.el.object3D.rotation.y -= R.x * (this.data.turn*Math.PI/180) * d;
+      const g = document.getElementById('gallery').components['model-gallery'];
+      if (g){ if (A && !this.prev.A) g.next(); if (B && !this.prev.B) g.prev(); }
+      this.prev.A = A; this.prev.B = B;
+      const wEl = document.getElementById('water'); const water = wEl && wEl.components['water-surface'];
+      if (water){ const r=0.6*d; if (lx) water.nudge(-r); if (ly) water.nudge(+r); }
+    }
+  });
+</script>
+</body>
+</html><!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>OLCE · Visionneuse 3D immersive</title>
+<script src="https://aframe.io/releases/1.7.1/aframe.min.js"></script>
+<style>
   :root{
     --sea:#0e1f2b; --sea2:#132c3a; --foam:#eaf1f4; --muted:#8aa4b2;
     --tide:#57c4ad; --line:rgba(138,164,178,.18);
