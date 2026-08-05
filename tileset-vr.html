@@ -4,8 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>OLCE · 3D Tiles VR (test)</title>
-
-<!-- three est épinglé sur la version d'A-Frame 1.7.1 (r173) pour rester compatible -->
 <script type="importmap">
 {
   "imports": {
@@ -16,136 +14,154 @@
   }
 }
 </script>
-<script src="https://aframe.io/releases/1.7.1/aframe.min.js"></script>
 <style>
   :root{ --sea:#0e1f2b; --foam:#eaf1f4; --muted:#8aa4b2; --tide:#57c4ad; --line:rgba(138,164,178,.18); }
-  html,body{margin:0;height:100%}
-  body{font-family:ui-sans-serif,system-ui,sans-serif;color:var(--foam);background:var(--sea)}
-  #ui{position:fixed;top:18px;left:18px;z-index:10;width:min(320px,calc(100vw - 36px));
+  html,body{margin:0;height:100%;overflow:hidden}
+  body{font-family:ui-sans-serif,system-ui,sans-serif;background:var(--sea)}
+  canvas{display:block}
+  #ui{position:fixed;top:18px;left:18px;z-index:10;width:min(340px,calc(100vw - 36px));color:var(--foam);
       background:rgba(14,31,43,.92);border:1px solid var(--line);border-radius:14px;padding:16px;
       -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
   .kicker{font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--tide)}
   h1{font-size:16px;margin:6px 0 8px;font-weight:600}
   p{margin:0 0 8px;font-size:12px;color:var(--muted);line-height:1.5}
-  .stat{font-family:ui-monospace,monospace;font-size:12px;color:var(--tide)}
   .k{font-family:ui-monospace,monospace;color:var(--tide)}
+  #status{font-family:ui-monospace,monospace;font-size:12px;color:var(--tide);word-break:break-word}
+  #vrbtn{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:10}
 </style>
 </head>
 <body>
   <div id="ui">
     <div class="kicker">OLCE · 3D Tiles</div>
     <h1>Test tileset immersif</h1>
-    <p>Touche l'icône casque (en bas à droite) pour entrer en VR.<br>
-       <span class="k">Stick gauche</span> déplacement · <span class="k">stick droit</span> monter/pivoter · <span class="k">gâchette</span> accélérer.</p>
-    <p id="status" class="stat">initialisation…</p>
+    <p>Ordinateur : <span class="k">ZQSD/WASD</span> + clic-glisser souris · <span class="k">Espace/Ctrl</span> monter-descendre · <span class="k">Maj</span> accélérer.<br>
+       Casque : bouton VR en bas · <span class="k">sticks</span> vol libre · <span class="k">gâchette</span> accélérer.</p>
+    <p id="status">initialisation…</p>
   </div>
 
-  <a-scene renderer="colorManagement: true; antialias: true; highRefreshRate: true"
-           background="color: #0e1f2b" vr-mode-ui="enabled: true">
-    <a-entity light="type: ambient; intensity: 1.1"></a-entity>
-    <a-entity light="type: directional; intensity: 0.5" position="3 5 2"></a-entity>
-    <a-entity id="rig" free-fly>
-      <a-entity camera position="0 1.6 0" look-controls="pointerLockEnabled: false" wasd-controls="acceleration: 60"></a-entity>
-      <a-entity laser-controls="hand: left"></a-entity>
-      <a-entity laser-controls="hand: right"></a-entity>
-    </a-entity>
-    <a-entity scene-grid></a-entity>
-  </a-scene>
+<script type="module">
+  import * as THREE from 'three';
+  import { VRButton } from 'three/addons/webxr/VRButton.js';
+  import { TilesRenderer } from '3d-tiles-renderer';
+  import { CesiumIonAuthPlugin, GLTFExtensionsPlugin, TileCompressionPlugin } from '3d-tiles-renderer/plugins';
+  import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+  import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 
-  <!-- locomotion vol libre (identique à ta visionneuse) -->
-  <script>
-    AFRAME.registerComponent('scene-grid', {
-      init(){ const T=AFRAME.THREE; const g=new T.GridHelper(2000,200,0x57c4ad,0x2a3b46);
-        g.material.opacity=0.15; g.material.transparent=true; this.el.setObject3D('grid',g); }
+  /* ======== À RENSEIGNER ======== */
+  const ION_ASSET_ID = 5112317;           // <- ton Asset ID Cesium ion (déjà renseigné)
+  const ION_TOKEN    = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI2Njg0MDI3OS1kYTFjLTQ2ZTQtOGIwMS0xOGUxZTJjZTNlMmMiLCJpZCI6NDY0MTg2LCJhc3NldElkIjo1MTEyMzE3LCJhc3NldHMiOnsiNTExMjMxNyI6eyJ0eXBlIjoiM0RUSUxFUyJ9fSwic3JjIjoiY2FhYjhlZjUtMWIyNC00ZDA5LWExNzktMjczN2JjNzA1NGI0IiwiaWF0IjoxNzg1OTM3MzAzLCJleHAiOjE3ODU5NDA5MDN9.HDQX0g-Obl_RBTe1LUg4ORCTH36cixNCdMBpkS1AaKc'; // <- colle ton access token Cesium ion ici
+  /* ============================== */
+
+  const status = document.getElementById('status');
+  const setStatus = m => { status.textContent = m; };
+  window.addEventListener('unhandledrejection', e => setStatus('Erreur : ' + ((e.reason && e.reason.message) || e.reason)));
+  window.addEventListener('error', e => setStatus('Erreur : ' + e.message));
+
+  // --- renderer / scène / caméra ---
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.xr.enabled = true;
+  renderer.setClearColor(0x0e1f2b);
+  document.body.appendChild(renderer.domElement);
+  const vb = VRButton.createButton(renderer); vb.id = 'vrbtn'; document.body.appendChild(vb);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.1, 2e6);
+  const rig = new THREE.Group(); rig.add(camera); scene.add(rig);
+  rig.position.set(0, 1.6, 6);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 1.1));
+  const dl = new THREE.DirectionalLight(0xffffff, 0.5); dl.position.set(3,5,2); scene.add(dl);
+  const grid = new THREE.GridHelper(4000, 200, 0x57c4ad, 0x2a3b46);
+  grid.material.opacity = 0.14; grid.material.transparent = true; scene.add(grid);
+
+  // --- tileset Cesium ion ---
+  let tiles = null;
+  function initTiles(){
+    tiles = new TilesRenderer();
+    tiles.registerPlugin(new CesiumIonAuthPlugin({ apiToken: ION_TOKEN, assetId: ION_ASSET_ID }));
+    const draco = new DRACOLoader(); draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
+    const ktx2  = new KTX2Loader().setTranscoderPath('https://cdn.jsdelivr.net/npm/three@0.173.0/examples/jsm/libs/basis/').detectSupport(renderer);
+    tiles.registerPlugin(new GLTFExtensionsPlugin({ dracoLoader: draco, ktxLoader: ktx2 }));
+    tiles.registerPlugin(new TileCompressionPlugin());
+    tiles.setCamera(camera);
+    tiles.setResolutionFromRenderer(camera, renderer);
+    scene.add(tiles.group);
+    setStatus('chargement du tileset…');
+
+    tiles.addEventListener('load-root-tileset', () => {
+      const s = new THREE.Sphere(); tiles.getBoundingSphere(s);
+      const c = s.center.clone(), up = c.clone().normalize();
+      const rot = new THREE.Quaternion().setFromUnitVectors(up, new THREE.Vector3(0,1,0));
+      tiles.group.quaternion.copy(rot);
+      tiles.group.position.copy(c).applyQuaternion(rot).multiplyScalar(-1);
+      tiles.group.updateMatrixWorld(true);
+      const R = s.radius || 100;
+      rig.position.set(0, Math.min(Math.max(R*0.15,1.6),200), Math.min(Math.max(R*0.6,4),900));
+      moveSpeed = Math.min(Math.max(R/20,1.5),120);
+      setStatus('tileset chargé (rayon ≈ ' + Math.round(R) + ' m)');
     });
-    AFRAME.registerComponent('free-fly', {
-      schema:{ speed:{default:5}, turn:{default:90}, boost:{default:4} },
-      init(){ this.cam=this.el.querySelector('[camera]'); },
-      tick(t,dt){
-        if(!dt) return;
-        const xr=this.el.sceneEl.renderer && this.el.sceneEl.renderer.xr;
-        const s=xr && xr.getSession && xr.getSession(); if(!s) return;
-        const T=AFRAME.THREE, d=dt/1000, dz=v=>Math.abs(v)<0.12?0:v;
-        let L={x:0,y:0},R={x:0,y:0},boost=1;
-        for(const src of s.inputSources){ const gp=src.gamepad; if(!gp) continue;
-          const ax=gp.axes, sx=ax.length>=4?ax[2]:ax[0], sy=ax.length>=4?ax[3]:ax[1];
-          const trig=gp.buttons[0]&&gp.buttons[0].pressed;
-          if(src.handedness==='left'){ L.x=dz(sx); L.y=dz(sy); if(trig) boost=this.data.boost; }
-          if(src.handedness==='right'){ R.x=dz(sx); R.y=dz(sy); if(trig) boost=this.data.boost; }
-        }
-        const q=new T.Quaternion(); this.cam.object3D.getWorldQuaternion(q);
-        const fwd=new T.Vector3(0,0,-1).applyQuaternion(q); fwd.y=0; if(fwd.lengthSq()>1e-6) fwd.normalize();
-        const rt=new T.Vector3(1,0,0).applyQuaternion(q); rt.y=0; if(rt.lengthSq()>1e-6) rt.normalize();
-        const sp=this.data.speed*boost*d, mv=new T.Vector3();
-        mv.addScaledVector(fwd,-L.y*sp); mv.addScaledVector(rt,L.x*sp); mv.y+=-R.y*sp;
-        this.el.object3D.position.add(mv);
-        this.el.object3D.rotation.y-=R.x*(this.data.turn*Math.PI/180)*d;
+    tiles.addEventListener('load-error', e => setStatus('Erreur de chargement : ' + ((e.error && e.error.message) || e.url || 'voir console')));
+    setTimeout(() => { if (status.textContent.indexOf('chargement du tileset') === 0)
+      setStatus('Toujours en chargement après 8 s (F12 → Console/Réseau).'); }, 8000);
+  }
+
+  // --- déplacement : vol libre XR + clavier/souris sur ordinateur ---
+  let moveSpeed = 6;
+  const keys = {};
+  addEventListener('keydown', e => keys[e.code]=true);
+  addEventListener('keyup',   e => keys[e.code]=false);
+  let dragging=false, px=0, py=0, yaw=0, pitch=0;
+  renderer.domElement.addEventListener('mousedown', e=>{ dragging=true; px=e.clientX; py=e.clientY; });
+  addEventListener('mouseup', ()=> dragging=false);
+  addEventListener('mousemove', e=>{ if(!dragging) return;
+    yaw -= (e.clientX-px)*0.003; pitch -= (e.clientY-py)*0.003;
+    pitch = Math.max(-1.4, Math.min(1.4, pitch)); px=e.clientX; py=e.clientY; });
+  renderer.xr.addEventListener('sessionstart', ()=> camera.rotation.set(0,0,0));
+
+  function updateMove(dt){
+    if (renderer.xr.isPresenting){
+      const session = renderer.xr.getSession();
+      let L={x:0,y:0}, R={x:0,y:0}, boost=1;
+      for (const src of session.inputSources){ const gp=src.gamepad; if(!gp) continue;
+        const ax=gp.axes, sx=ax.length>=4?ax[2]:ax[0], sy=ax.length>=4?ax[3]:ax[1];
+        const dz=v=>Math.abs(v)<0.12?0:v, trig=gp.buttons[0]&&gp.buttons[0].pressed;
+        if(src.handedness==='left'){ L.x=dz(sx); L.y=dz(sy); if(trig) boost=4; }
+        if(src.handedness==='right'){ R.x=dz(sx); R.y=dz(sy); if(trig) boost=4; }
       }
-    });
-  </script>
-
-  <!-- chargement du tileset Cesium ion via 3D Tiles Renderer -->
-  <script type="module">
-    import { TilesRenderer } from '3d-tiles-renderer';
-    import { CesiumIonAuthPlugin, GLTFExtensionsPlugin, TileCompressionPlugin } from '3d-tiles-renderer/plugins';
-    import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-    import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
-
-    /* ======== À RENSEIGNER ======== */
-    const ION_ASSET_ID = 5112317;                 // <- l'Asset ID de ton relevé sur Cesium ion (un nombre)
-    const ION_TOKEN    = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJjYWFiOGVmNS0xYjI0LTRkMDktYTE3OS0yNzM3YmM3MDU0YjQiLCJpZCI6NDY0MTg2LCJzdWIiOiJhbnRvaW5lY29sbGluIiwiaXNzIjoiaHR0cHM6Ly9hcGkuY2VzaXVtLmNvbSIsImF1ZCI6IlRva2VuUG9udEthbGxlZyIsImlhdCI6MTc4NTkyMTk2N30.2hXEeWG15-jRjzwfKxUvekvb2CsPgC33G6dFMZKX4h4'; // <- ton access token Cesium ion
-    /* ============================== */
-
-    const THREE = AFRAME.THREE;
-    const sceneEl = document.querySelector('a-scene');
-    const status = document.getElementById('status');
-    const setStatus = m => { status.textContent = m; };
-
-    function start(){
-      const renderer = sceneEl.renderer;
-      const camera   = sceneEl.camera;
-      const rig      = document.getElementById('rig');
-
-      const tiles = new TilesRenderer();
-      tiles.registerPlugin(new CesiumIonAuthPlugin({ apiToken: ION_TOKEN, assetId: String(ION_ASSET_ID), autoRefreshToken: true }));
-
-      // décodeurs pour les tuiles ion (glTF compressé Draco + textures KTX2)
-      const draco = new DRACOLoader(); draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
-      const ktx2  = new KTX2Loader().setTranscoderPath('https://cdn.jsdelivr.net/npm/three@0.173.0/examples/jsm/libs/basis/').detectSupport(renderer);
-      tiles.registerPlugin(new GLTFExtensionsPlugin({ dracoLoader: draco, ktxLoader: ktx2 }));
-      tiles.registerPlugin(new TileCompressionPlugin());
-
-      sceneEl.object3D.add(tiles.group);
-      setStatus('chargement du tileset…');
-
-      // recentrage + mise à l'endroit : un tileset ion est géoréférencé en ECEF
-      // (coordonnées ~6 millions de m). On ramène le centre à l'origine et on aligne
-      // la verticale locale sur +Y, pour un survol en repère plat.
-      tiles.addEventListener('load-root-tileset', () => {
-        const sph = new THREE.Sphere();
-        tiles.getBoundingSphere(sph);
-        const c = sph.center.clone();
-        const up = c.clone().normalize();
-        const rot = new THREE.Quaternion().setFromUnitVectors(up, new THREE.Vector3(0,1,0));
-        tiles.group.quaternion.copy(rot);
-        tiles.group.position.copy(c).applyQuaternion(rot).multiplyScalar(-1);
-        tiles.group.updateMatrixWorld(true);
-        // cadrage + vitesse selon le rayon du relevé
-        const Rd = sph.radius || 100;
-        rig.object3D.position.set(0, Math.min(Math.max(Rd*0.15,1.6),200), Math.min(Math.max(Rd*0.6,4),900));
-        rig.setAttribute('free-fly','speed', Math.min(Math.max(Rd/20,1.5),100));
-        setStatus('tileset chargé (rayon ≈ ' + Math.round(Rd) + ' m)');
-      });
-      tiles.addEventListener('load-error', e => setStatus('erreur de chargement — vérifie Asset ID / token (voir console)'));
-
-      // mise à jour LOD chaque frame, dans la boucle de rendu (compatible XR)
-      sceneEl.addBehavior({ tick(){ camera.updateMatrixWorld(); tiles.setResolutionFromRenderer(camera, renderer); tiles.setCamera(camera); tiles.update(); } });
+      const q=new THREE.Quaternion(); renderer.xr.getCamera().getWorldQuaternion(q);
+      const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(q); fwd.y=0; if(fwd.lengthSq()>1e-6) fwd.normalize();
+      const rt=new THREE.Vector3(1,0,0).applyQuaternion(q); rt.y=0; if(rt.lengthSq()>1e-6) rt.normalize();
+      const sp=moveSpeed*boost*dt, mv=new THREE.Vector3();
+      mv.addScaledVector(fwd,-L.y*sp); mv.addScaledVector(rt,L.x*sp); mv.y+=-R.y*sp;
+      rig.position.add(mv);
+      rig.rotation.y -= R.x * (Math.PI/2) * dt;
+    } else {
+      camera.rotation.set(pitch, yaw, 0, 'YXZ');
+      const sp=moveSpeed*dt*(keys['ShiftLeft']||keys['ShiftRight']?4:1);
+      const fwd=new THREE.Vector3(0,0,-1).applyEuler(new THREE.Euler(0,yaw,0));
+      const rt=new THREE.Vector3(1,0,0).applyEuler(new THREE.Euler(0,yaw,0));
+      if(keys['KeyW']||keys['KeyZ']) rig.position.addScaledVector(fwd, sp);
+      if(keys['KeyS'])               rig.position.addScaledVector(fwd,-sp);
+      if(keys['KeyA']||keys['KeyQ']) rig.position.addScaledVector(rt,-sp);
+      if(keys['KeyD'])               rig.position.addScaledVector(rt, sp);
+      if(keys['Space'])              rig.position.y += sp;
+      if(keys['ControlLeft'])        rig.position.y -= sp;
     }
+  }
 
-    if (ION_ASSET_ID === 5112317 || ION_TOKEN === 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJjYWFiOGVmNS0xYjI0LTRkMDktYTE3OS0yNzM3YmM3MDU0YjQiLCJpZCI6NDY0MTg2LCJzdWIiOiJhbnRvaW5lY29sbGluIiwiaXNzIjoiaHR0cHM6Ly9hcGkuY2VzaXVtLmNvbSIsImF1ZCI6IlRva2VuUG9udEthbGxlZyIsImlhdCI6MTc4NTkyMTk2N30.2hXEeWG15-jRjzwfKxUvekvb2CsPgC33G6dFMZKX4h4'){
-      setStatus('renseigne ION_ASSET_ID et ION_TOKEN dans le fichier, puis recharge.');
-    } else if (sceneEl.hasLoaded){ start(); }
-    else { sceneEl.addEventListener('loaded', start); }
-  </script>
+  const clock = new THREE.Clock();
+  renderer.setAnimationLoop(()=>{
+    const dt = Math.min(clock.getDelta(), 0.1);
+    updateMove(dt);
+    if (tiles){ camera.updateMatrixWorld(); tiles.setResolutionFromRenderer(camera, renderer); tiles.setCamera(camera); tiles.update(); }
+    renderer.render(scene, camera);
+  });
+  addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+  if (ION_ASSET_ID===0 || ION_TOKEN==='COLLE_TON_TOKEN') setStatus('renseigne ION_ASSET_ID (ex. 5112317) et ION_TOKEN, puis recharge.');
+  else initTiles();
+</script>
 </body>
 </html>
