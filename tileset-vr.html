@@ -35,7 +35,7 @@
     <div class="kicker">OLCE · 3D Tiles</div>
     <h1>Test tileset immersif</h1>
     <p>Ordinateur : <span class="k">ZQSD/WASD</span> + clic-glisser souris · <span class="k">Espace/Ctrl</span> monter-descendre · <span class="k">Maj</span> accélérer.<br>
-       Casque : bouton VR en bas · <span class="k">sticks</span> vol libre · <span class="k">gâchette</span> accélérer.</p>
+       Casque : bouton VR en bas · <span class="k">sticks</span> vol libre · <span class="k">gâchette</span> accélérer · <span class="k">B</span> quitter la VR.</p>
     <p id="status">initialisation…</p>
   </div>
 
@@ -80,6 +80,7 @@
   let tiles = null, framed = false;
   function initTiles(){
     tiles = new TilesRenderer();
+    tiles.errorTarget = 2;   // détail des tuiles : plus bas = plus fin (2 ≈ haute résolution ; monte vers 6 si c'est lent)
     tiles.registerPlugin(new CesiumIonAuthPlugin({ apiToken: ION_TOKEN, assetId: ION_ASSET_ID }));
     const draco = new DRACOLoader(); draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
     const ktx2  = new KTX2Loader().setTranscoderPath('https://cdn.jsdelivr.net/npm/three@0.173.0/examples/jsm/libs/basis/').detectSupport(renderer);
@@ -97,7 +98,7 @@
   }
 
   // --- déplacement : vol libre XR + clavier/souris sur ordinateur ---
-  let moveSpeed = 6;
+  let moveSpeed = 6, exitPrev = false;
   const keys = {};
   addEventListener('keydown', e => keys[e.code]=true);
   addEventListener('keyup',   e => keys[e.code]=false);
@@ -112,13 +113,16 @@
   function updateMove(dt){
     if (renderer.xr.isPresenting){
       const session = renderer.xr.getSession();
-      let L={x:0,y:0}, R={x:0,y:0}, boost=1;
+      let L={x:0,y:0}, R={x:0,y:0}, boost=1, exit=false;
       for (const src of session.inputSources){ const gp=src.gamepad; if(!gp) continue;
         const ax=gp.axes, sx=ax.length>=4?ax[2]:ax[0], sy=ax.length>=4?ax[3]:ax[1];
         const dz=v=>Math.abs(v)<0.12?0:v, trig=gp.buttons[0]&&gp.buttons[0].pressed;
         if(src.handedness==='left'){ L.x=dz(sx); L.y=dz(sy); if(trig) boost=4; }
-        if(src.handedness==='right'){ R.x=dz(sx); R.y=dz(sy); if(trig) boost=4; }
+        if(src.handedness==='right'){ R.x=dz(sx); R.y=dz(sy); if(trig) boost=4;
+          if(gp.buttons[5]&&gp.buttons[5].pressed) exit=true; }   // bouton B = quitter la VR
       }
+      if (exit && !exitPrev) session.end();
+      exitPrev = exit;
       const q=new THREE.Quaternion(); renderer.xr.getCamera().getWorldQuaternion(q);
       const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(q); fwd.y=0; if(fwd.lengthSq()>1e-6) fwd.normalize();
       const rt=new THREE.Vector3(1,0,0).applyQuaternion(q); rt.y=0; if(rt.lengthSq()>1e-6) rt.normalize();
