@@ -49,7 +49,7 @@
 
   /* ======== À RENSEIGNER ======== */
   const ION_ASSET_ID = 5112317;           // <- ton Asset ID Cesium ion (déjà renseigné)
-  const ION_TOKEN    = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI2Njg0MDI3OS1kYTFjLTQ2ZTQtOGIwMS0xOGUxZTJjZTNlMmMiLCJpZCI6NDY0MTg2LCJhc3NldElkIjo1MTEyMzE3LCJhc3NldHMiOnsiNTExMjMxNyI6eyJ0eXBlIjoiM0RUSUxFUyJ9fSwic3JjIjoiY2FhYjhlZjUtMWIyNC00ZDA5LWExNzktMjczN2JjNzA1NGI0IiwiaWF0IjoxNzg1OTM3MzAzLCJleHAiOjE3ODU5NDA5MDN9.HDQX0g-Obl_RBTe1LUg4ORCTH36cixNCdMBpkS1AaKc'; // <- colle ton access token Cesium ion ici
+  const ION_TOKEN    = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJjYWFiOGVmNS0xYjI0LTRkMDktYTE3OS0yNzM3YmM3MDU0YjQiLCJpZCI6NDY0MTg2LCJzdWIiOiJhbnRvaW5lY29sbGluIiwiaXNzIjoiaHR0cHM6Ly9hcGkuY2VzaXVtLmNvbSIsImF1ZCI6IlRva2VuUG9udEthbGxlZyIsImlhdCI6MTc4NTkyMTk2N30.2hXEeWG15-jRjzwfKxUvekvb2CsPgC33G6dFMZKX4h4'; // <- colle ton access token Cesium ion ici
   /* ============================== */
 
   const status = document.getElementById('status');
@@ -77,7 +77,7 @@
   grid.material.opacity = 0.14; grid.material.transparent = true; scene.add(grid);
 
   // --- tileset Cesium ion ---
-  let tiles = null;
+  let tiles = null, framed = false;
   function initTiles(){
     tiles = new TilesRenderer();
     tiles.registerPlugin(new CesiumIonAuthPlugin({ apiToken: ION_TOKEN, assetId: ION_ASSET_ID }));
@@ -90,18 +90,7 @@
     scene.add(tiles.group);
     setStatus('chargement du tileset…');
 
-    tiles.addEventListener('load-root-tileset', () => {
-      const s = new THREE.Sphere(); tiles.getBoundingSphere(s);
-      const c = s.center.clone(), up = c.clone().normalize();
-      const rot = new THREE.Quaternion().setFromUnitVectors(up, new THREE.Vector3(0,1,0));
-      tiles.group.quaternion.copy(rot);
-      tiles.group.position.copy(c).applyQuaternion(rot).multiplyScalar(-1);
-      tiles.group.updateMatrixWorld(true);
-      const R = s.radius || 100;
-      rig.position.set(0, Math.min(Math.max(R*0.15,1.6),200), Math.min(Math.max(R*0.6,4),900));
-      moveSpeed = Math.min(Math.max(R/20,1.5),120);
-      setStatus('tileset chargé (rayon ≈ ' + Math.round(R) + ' m)');
-    });
+    tiles.addEventListener('load-root-tileset', () => setStatus('tileset chargé, cadrage en cours…'));
     tiles.addEventListener('load-error', e => setStatus('Erreur de chargement : ' + ((e.error && e.error.message) || e.url || 'voir console')));
     setTimeout(() => { if (status.textContent.indexOf('chargement du tileset') === 0)
       setStatus('Toujours en chargement après 8 s (F12 → Console/Réseau).'); }, 8000);
@@ -155,7 +144,25 @@
   renderer.setAnimationLoop(()=>{
     const dt = Math.min(clock.getDelta(), 0.1);
     updateMove(dt);
-    if (tiles){ camera.updateMatrixWorld(); tiles.setResolutionFromRenderer(camera, renderer); tiles.setCamera(camera); tiles.update(); }
+    if (tiles){
+      camera.updateMatrixWorld();
+      tiles.setResolutionFromRenderer(camera, renderer); tiles.setCamera(camera); tiles.update();
+      if (!framed){
+        const s = new THREE.Sphere(); tiles.getBoundingSphere(s);
+        if (s.radius > 0){
+          const c = s.center.clone(), up = c.clone().normalize();
+          const rot = new THREE.Quaternion().setFromUnitVectors(up, new THREE.Vector3(0,1,0));
+          tiles.group.quaternion.copy(rot);
+          tiles.group.position.copy(c).applyQuaternion(rot).multiplyScalar(-1);
+          tiles.group.updateMatrixWorld(true);
+          const R = s.radius;
+          rig.position.set(0, Math.min(Math.max(R*0.15,1.6),200), Math.min(Math.max(R*0.6,4),900));
+          moveSpeed = Math.min(Math.max(R/20,1.5),120);
+          framed = true;
+          setStatus('tileset chargé (rayon ≈ ' + Math.round(R) + ' m)');
+        }
+      }
+    }
     renderer.render(scene, camera);
   });
   addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
