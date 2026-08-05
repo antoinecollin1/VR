@@ -92,8 +92,8 @@
     import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 
     /* ======== À RENSEIGNER ======== */
-    const ION_ASSET_ID = 5112317;                 // <- l'Asset ID de ton relevé sur Cesium ion (un nombre)
-    const ION_TOKEN    = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJjYWFiOGVmNS0xYjI0LTRkMDktYTE3OS0yNzM3YmM3MDU0YjQiLCJpZCI6NDY0MTg2LCJzdWIiOiJhbnRvaW5lY29sbGluIiwiaXNzIjoiaHR0cHM6Ly9hcGkuY2VzaXVtLmNvbSIsImF1ZCI6IlRva2VuUG9udEthbGxlZyIsImlhdCI6MTc4NTkyMTk2N30.2hXEeWG15-jRjzwfKxUvekvb2CsPgC33G6dFMZKX4h4'; // <- ton access token Cesium ion
+    const ION_ASSET_ID = 0;                 // <- l'Asset ID de ton relevé sur Cesium ion (un nombre)
+    const ION_TOKEN    = 'COLLE_TON_TOKEN'; // <- ton access token Cesium ion
     /* ============================== */
 
     const THREE = AFRAME.THREE;
@@ -121,7 +121,7 @@
       // recentrage + mise à l'endroit : un tileset ion est géoréférencé en ECEF
       // (coordonnées ~6 millions de m). On ramène le centre à l'origine et on aligne
       // la verticale locale sur +Y, pour un survol en repère plat.
-      tiles.addEventListener('load-tile-set', () => {
+      tiles.addEventListener('load-root-tileset', () => {
         const sph = new THREE.Sphere();
         tiles.getBoundingSphere(sph);
         const c = sph.center.clone();
@@ -139,7 +139,7 @@
       tiles.addEventListener('load-error', e => setStatus('erreur de chargement — vérifie Asset ID / token (voir console)'));
 
       // mise à jour LOD chaque frame, dans la boucle de rendu (compatible XR)
-      sceneEl.addBehavior({ tick(){ tiles.setResolutionFromRenderer(camera, renderer); tiles.setCamera(camera); tiles.update(); } });
+      sceneEl.addBehavior({ tick(){ camera.updateMatrixWorld(); tiles.setResolutionFromRenderer(camera, renderer); tiles.setCamera(camera); tiles.update(); } });
     }
 
     if (ION_ASSET_ID === 0 || ION_TOKEN === 'COLLE_TON_TOKEN'){
