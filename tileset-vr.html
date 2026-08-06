@@ -37,6 +37,7 @@
     <p>Ordinateur : <span class="k">ZQSD/WASD</span> + clic-glisser souris · <span class="k">Espace/Ctrl</span> monter-descendre · <span class="k">Maj</span> accélérer.<br>
        Casque : bouton VR en bas · <span class="k">sticks</span> vol libre · <span class="k">gâchette</span> accélérer · <span class="k">B</span> quitter la VR.</p>
     <p id="status">initialisation…</p>
+    <p id="dbg" style="font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);word-break:break-all"></p>
   </div>
 
 <script type="module">
@@ -54,6 +55,9 @@
 
   const status = document.getElementById('status');
   const setStatus = m => { status.textContent = m; };
+  const dbg = document.getElementById('dbg');
+  const lastFwd = new THREE.Vector3(0,0,-1);
+  let frameCount = 0;
   window.addEventListener('unhandledrejection', e => setStatus('Erreur : ' + ((e.reason && e.reason.message) || e.reason)));
   window.addEventListener('error', e => setStatus('Erreur : ' + e.message));
 
@@ -131,6 +135,7 @@
       const sp=moveSpeed*boost*dt, mv=new THREE.Vector3();
       mv.addScaledVector(fwd,-L.y*sp); mv.addScaledVector(rt,L.x*sp);
       mv.y += -R.y*sp;                                          // stick droit = montée/descente (repère monde)
+      lastFwd.copy(fwd);
       rig.position.add(mv);
       rig.rotation.y -= R.x * (Math.PI/2) * dt;
     } else {
@@ -138,6 +143,7 @@
       const sp=moveSpeed*dt*(keys['ShiftLeft']||keys['ShiftRight']?4:1);
       const fwd=new THREE.Vector3(0,0,-1).applyEuler(new THREE.Euler(pitch,yaw,0,'YXZ'));  // vole dans la direction du regard
       const rt =new THREE.Vector3(1,0,0).applyEuler(new THREE.Euler(0,yaw,0));
+      lastFwd.copy(fwd);
       if(keys['KeyW']||keys['KeyZ']) rig.position.addScaledVector(fwd, sp);
       if(keys['KeyS'])               rig.position.addScaledVector(fwd,-sp);
       if(keys['KeyA']||keys['KeyQ']) rig.position.addScaledVector(rt,-sp);
@@ -169,6 +175,13 @@
           setStatus('tileset chargé (rayon ≈ ' + Math.round(R) + ' m)');
         }
       }
+    }
+    if ((frameCount++ % 10) === 0){
+      const mode = renderer.xr.isPresenting ? 'VR' : 'Bureau';
+      const p = rig.position;
+      dbg.textContent = mode + ' · pos ' + p.x.toFixed(0) + ',' + p.y.toFixed(0) + ',' + p.z.toFixed(0)
+        + ' · regard ' + lastFwd.x.toFixed(2) + ',' + lastFwd.y.toFixed(2) + ',' + lastFwd.z.toFixed(2)
+        + ' · tuiles ' + (tiles ? tiles.group.children.length : 0);
     }
     renderer.render(scene, camera);
   });
