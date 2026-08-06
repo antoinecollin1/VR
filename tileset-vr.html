@@ -80,6 +80,22 @@
   const grid = new THREE.GridHelper(4000, 200, 0x57c4ad, 0x2a3b46);
   grid.material.opacity = 0.14; grid.material.transparent = true; scene.add(grid);
 
+  // HUD 3D (visible DANS le casque, où le panneau HTML ne l'est pas)
+  const hudCanvas = Object.assign(document.createElement('canvas'), { width:512, height:140 });
+  const hudCtx = hudCanvas.getContext('2d');
+  const hudTex = new THREE.CanvasTexture(hudCanvas);
+  const hudMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.14),
+    new THREE.MeshBasicMaterial({ map: hudTex, transparent: true, depthTest: false }));
+  hudMesh.position.set(0, -0.28, -0.9); hudMesh.renderOrder = 999; hudMesh.visible = false;
+  camera.add(hudMesh);
+  function drawHud(t){
+    hudCtx.clearRect(0,0,512,140);
+    hudCtx.fillStyle='rgba(14,31,43,0.9)'; hudCtx.fillRect(0,0,512,140);
+    hudCtx.fillStyle='#57c4ad'; hudCtx.font='26px monospace';
+    hudCtx.fillText(t.slice(0,42),14,58); hudCtx.fillText(t.slice(42,84),14,104);
+    hudTex.needsUpdate = true;
+  }
+
   // --- tileset Cesium ion ---
   let tiles = null, framed = false;
   function initTiles(){
@@ -107,7 +123,7 @@
   addEventListener('keydown', e => keys[e.code]=true);
   addEventListener('keyup',   e => keys[e.code]=false);
   let dragging=false, px=0, py=0, yaw=0, pitch=0;
-  renderer.domElement.addEventListener('mousedown', e=>{ dragging=true; px=e.clientX; py=e.clientY; });
+  addEventListener('mousedown', e=>{ if(e.target && e.target.closest && e.target.closest('#ui')) return; dragging=true; px=e.clientX; py=e.clientY; });
   addEventListener('mouseup', ()=> dragging=false);
   addEventListener('mousemove', e=>{ if(!dragging) return;
     yaw -= (e.clientX-px)*0.003; pitch -= (e.clientY-py)*0.003;
@@ -179,9 +195,12 @@
     if ((frameCount++ % 10) === 0){
       const mode = renderer.xr.isPresenting ? 'VR' : 'Bureau';
       const p = rig.position;
-      dbg.textContent = mode + ' · pos ' + p.x.toFixed(0) + ',' + p.y.toFixed(0) + ',' + p.z.toFixed(0)
-        + ' · regard ' + lastFwd.x.toFixed(2) + ',' + lastFwd.y.toFixed(2) + ',' + lastFwd.z.toFixed(2)
-        + ' · tuiles ' + (tiles ? tiles.group.children.length : 0);
+      const txt = mode + ' pos ' + p.x.toFixed(0) + ',' + p.y.toFixed(0) + ',' + p.z.toFixed(0)
+        + ' regard ' + lastFwd.x.toFixed(2) + ',' + lastFwd.y.toFixed(2) + ',' + lastFwd.z.toFixed(2)
+        + ' tuiles ' + (tiles ? tiles.group.children.length : 0);
+      dbg.textContent = txt;
+      hudMesh.visible = renderer.xr.isPresenting;
+      if (renderer.xr.isPresenting) drawHud(txt);
     }
     renderer.render(scene, camera);
   });
