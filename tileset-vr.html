@@ -123,8 +123,9 @@
       }
       if (exit && !exitPrev) session.end();
       exitPrev = exit;
-      // déplacement RELATIF AU REGARD du casque (vol libre 3D) : regarder vers le haut + avancer = monter
-      const q=new THREE.Quaternion(); renderer.xr.getCamera().getWorldQuaternion(q);
+      // lire l'orientation du casque DIRECTEMENT dans la matrice monde de la caméra XR
+      // (getWorldQuaternion la recalculerait et renverrait une identité → le vol se figeait)
+      const q=new THREE.Quaternion().setFromRotationMatrix(renderer.xr.getCamera().matrixWorld);
       const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(q);   // direction du regard, en 3D
       const rt =new THREE.Vector3(1,0,0).applyQuaternion(q);    // droite du casque
       const sp=moveSpeed*boost*dt, mv=new THREE.Vector3();
@@ -135,8 +136,8 @@
     } else {
       camera.rotation.set(pitch, yaw, 0, 'YXZ');
       const sp=moveSpeed*dt*(keys['ShiftLeft']||keys['ShiftRight']?4:1);
-      const fwd=new THREE.Vector3(0,0,-1).applyEuler(new THREE.Euler(0,yaw,0));
-      const rt=new THREE.Vector3(1,0,0).applyEuler(new THREE.Euler(0,yaw,0));
+      const fwd=new THREE.Vector3(0,0,-1).applyEuler(new THREE.Euler(pitch,yaw,0,'YXZ'));  // vole dans la direction du regard
+      const rt =new THREE.Vector3(1,0,0).applyEuler(new THREE.Euler(0,yaw,0));
       if(keys['KeyW']||keys['KeyZ']) rig.position.addScaledVector(fwd, sp);
       if(keys['KeyS'])               rig.position.addScaledVector(fwd,-sp);
       if(keys['KeyA']||keys['KeyQ']) rig.position.addScaledVector(rt,-sp);
@@ -152,7 +153,7 @@
     updateMove(dt);
     if (tiles){
       camera.updateMatrixWorld();
-      tiles.setResolutionFromRenderer(camera, renderer); tiles.setCamera(camera); tiles.update();
+      tiles.update();
       if (!framed){
         const s = new THREE.Sphere(); tiles.getBoundingSphere(s);
         if (s.radius > 0){
@@ -171,7 +172,8 @@
     }
     renderer.render(scene, camera);
   });
-  addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+  addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
+    if (tiles) tiles.setResolutionFromRenderer(camera, renderer); });
 
   if (ION_ASSET_ID===0 || ION_TOKEN==='COLLE_TON_TOKEN') setStatus('renseigne ION_ASSET_ID (ex. 5112317) et ION_TOKEN, puis recharge.');
   else initTiles();
