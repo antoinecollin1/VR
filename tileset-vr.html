@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>OLCE · 3D Tiles VR (test)</title>
+<title>OLCE · 3D Tiles VR</title>
 <script type="importmap">
 {
   "imports": {
@@ -26,18 +26,25 @@
   h1{font-size:16px;margin:6px 0 8px;font-weight:600}
   p{margin:0 0 8px;font-size:12px;color:var(--muted);line-height:1.5}
   .k{font-family:ui-monospace,monospace;color:var(--tide)}
+  #tsList{display:flex;flex-direction:column;gap:6px;margin:6px 0 10px}
+  button.ts{text-align:left;border:1px solid var(--line);background:rgba(255,255,255,.02);color:var(--foam);
+      padding:8px 10px;border-radius:9px;font-size:13px;cursor:pointer;font-family:inherit}
+  button.ts:hover{border-color:var(--tide);background:rgba(87,196,173,.08)}
+  button.ts.active{border-color:var(--tide);background:rgba(87,196,173,.14)}
   #status{font-family:ui-monospace,monospace;font-size:12px;color:var(--tide);word-break:break-word}
+  #dbg{font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);word-break:break-all}
   #vrbtn{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:10}
 </style>
 </head>
 <body>
   <div id="ui">
     <div class="kicker">OLCE · 3D Tiles</div>
-    <h1>Test tileset immersif</h1>
-    <p>Ordinateur : <span class="k">ZQSD/WASD</span> + clic-glisser souris · <span class="k">Espace/Ctrl</span> monter-descendre · <span class="k">Maj</span> accélérer.<br>
-       Casque : bouton VR en bas · <span class="k">sticks</span> vol libre · <span class="k">gâchette</span> accélérer · <span class="k">B</span> quitter la VR.</p>
+    <h1>Relevés immersifs</h1>
+    <div id="tsList"></div>
+    <p>Ordinateur : <span class="k">ZQSD/WASD</span> + clic-glisser · <span class="k">Espace/Ctrl</span> haut-bas · <span class="k">Maj</span> vite.<br>
+       Casque : bouton VR en bas · <span class="k">sticks</span> vol libre · <span class="k">gâchette</span> vite · <span class="k">A</span> modèle suivant · <span class="k">B</span> quitter.</p>
     <p id="status">initialisation…</p>
-    <p id="dbg" style="font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);word-break:break-all"></p>
+    <p id="dbg"></p>
   </div>
 
 <script type="module">
@@ -48,10 +55,15 @@
   import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
   import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 
-  /* ======== À RENSEIGNER ======== */
-  const ION_ASSET_ID = 5112317;           // <- ton Asset ID Cesium ion (déjà renseigné)
-  const ION_TOKEN    = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJjYWFiOGVmNS0xYjI0LTRkMDktYTE3OS0yNzM3YmM3MDU0YjQiLCJpZCI6NDY0MTg2LCJzdWIiOiJhbnRvaW5lY29sbGluIiwiaXNzIjoiaHR0cHM6Ly9hcGkuY2VzaXVtLmNvbSIsImF1ZCI6IlRva2VuUG9udEthbGxlZyIsImlhdCI6MTc4NTkyMTk2N30.2hXEeWG15-jRjzwfKxUvekvb2CsPgC33G6dFMZKX4h4'; // <- colle ton access token Cesium ion ici
-  /* ============================== */
+  /* ================= TES RELEVÉS CESIUM ION =================
+     Un objet par relevé. Pour EN AJOUTER UN, copie une ligne et
+     mets son nom, son Asset ID (nombre) et son token dédié.       */
+  const TILESETS = [
+    { name: 'Pont Kalleg',   assetId: 5112317, token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJjYWFiOGVmNS0xYjI0LTRkMDktYTE3OS0yNzM3YmM3MDU0YjQiLCJpZCI6NDY0MTg2LCJzdWIiOiJhbnRvaW5lY29sbGluIiwiaXNzIjoiaHR0cHM6Ly9hcGkuY2VzaXVtLmNvbSIsImF1ZCI6IlRva2VuUG9udEthbGxlZyIsImlhdCI6MTc4NTkyMTk2N30.2hXEeWG15-jRjzwfKxUvekvb2CsPgC33G6dFMZKX4h4' },
+    { name: 'Beaussais', assetId: 5122912, token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI2ZTQ1MmM2MS1lNTBhLTRiYmEtYmMwOS01M2IzMWVhZWQxMmEiLCJpZCI6NDY0MTg2LCJzdWIiOiJhbnRvaW5lY29sbGluIiwiaXNzIjoiaHR0cHM6Ly9hcGkuY2VzaXVtLmNvbSIsImF1ZCI6IlRva2VuQmVhdXNzYWlzIiwiaWF0IjoxNzg2MzQ5ODk4fQ.ue3F6kXWuowyAHwqjwrtR1rVBX3KgaR3gIdng0DsyP0' },
+    // { name: '3e relevé',  assetId: 0000000, token: 'AUTRE_TOKEN' },
+  ];
+  /* ========================================================== */
 
   const status = document.getElementById('status');
   const setStatus = m => { status.textContent = m; };
@@ -74,13 +86,12 @@
   const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.1, 2e6);
   const rig = new THREE.Group(); rig.add(camera); scene.add(rig);
   rig.position.set(0, 1.6, 6);
-
   scene.add(new THREE.AmbientLight(0xffffff, 1.1));
   const dl = new THREE.DirectionalLight(0xffffff, 0.5); dl.position.set(3,5,2); scene.add(dl);
   const grid = new THREE.GridHelper(4000, 200, 0x57c4ad, 0x2a3b46);
   grid.material.opacity = 0.14; grid.material.transparent = true; scene.add(grid);
 
-  // HUD 3D (visible DANS le casque, où le panneau HTML ne l'est pas)
+  // HUD debug 3D (visible dans le casque)
   const hudCanvas = Object.assign(document.createElement('canvas'), { width:512, height:140 });
   const hudCtx = hudCanvas.getContext('2d');
   const hudTex = new THREE.CanvasTexture(hudCanvas);
@@ -88,76 +99,78 @@
     new THREE.MeshBasicMaterial({ map: hudTex, transparent: true, depthTest: false }));
   hudMesh.position.set(0, -0.28, -0.9); hudMesh.renderOrder = 999; hudMesh.visible = false;
   camera.add(hudMesh);
-  function drawHud(t){
-    hudCtx.clearRect(0,0,512,140);
-    hudCtx.fillStyle='rgba(14,31,43,0.9)'; hudCtx.fillRect(0,0,512,140);
-    hudCtx.fillStyle='#57c4ad'; hudCtx.font='26px monospace';
-    hudCtx.fillText(t.slice(0,42),14,58); hudCtx.fillText(t.slice(42,84),14,104);
-    hudTex.needsUpdate = true;
-  }
+  function drawHud(t){ hudCtx.clearRect(0,0,512,140); hudCtx.fillStyle='rgba(14,31,43,0.9)'; hudCtx.fillRect(0,0,512,140);
+    hudCtx.fillStyle='#57c4ad'; hudCtx.font='26px monospace'; hudCtx.fillText(t.slice(0,42),14,58); hudCtx.fillText(t.slice(42,84),14,104); hudTex.needsUpdate=true; }
 
-  // --- tileset Cesium ion ---
-  let tiles = null, framed = false;
-  function initTiles(){
+  // décodeurs partagés (créés une fois)
+  const draco = new DRACOLoader().setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
+  const ktx2  = new KTX2Loader().setTranscoderPath('https://cdn.jsdelivr.net/npm/three@0.173.0/examples/jsm/libs/basis/').detectSupport(renderer);
+
+  // --- gestion des tilesets ---
+  let tiles = null, framed = false, current = -1;
+  function loadTileset(i){
+    i = (i % TILESETS.length + TILESETS.length) % TILESETS.length;
+    const t = TILESETS[i];
+    if (!t.token || t.token.indexOf('COLLE') === 0 || !t.assetId){ setStatus('Renseigne Asset ID + token pour « ' + t.name +' »'); return; }
+    current = i; framed = false;
+    if (tiles){ scene.remove(tiles.group); tiles.dispose(); tiles = null; }
     tiles = new TilesRenderer();
-    tiles.errorTarget = 1;   // détail des tuiles : plus bas = plus fin (1 ≈ très haute résolution ; monte vers 4-6 si c'est lent ou lourd en mémoire)
-    tiles.registerPlugin(new CesiumIonAuthPlugin({ apiToken: ION_TOKEN, assetId: ION_ASSET_ID }));
-    const draco = new DRACOLoader(); draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
-    const ktx2  = new KTX2Loader().setTranscoderPath('https://cdn.jsdelivr.net/npm/three@0.173.0/examples/jsm/libs/basis/').detectSupport(renderer);
+    tiles.errorTarget = 1;
+    tiles.registerPlugin(new CesiumIonAuthPlugin({ apiToken: t.token, assetId: t.assetId }));
     tiles.registerPlugin(new GLTFExtensionsPlugin({ dracoLoader: draco, ktxLoader: ktx2 }));
     tiles.registerPlugin(new TileCompressionPlugin());
     tiles.setCamera(camera);
     tiles.setResolutionFromRenderer(camera, renderer);
     scene.add(tiles.group);
-    setStatus('chargement du tileset…');
-
-    tiles.addEventListener('load-root-tileset', () => setStatus('tileset chargé, cadrage en cours…'));
-    tiles.addEventListener('load-error', e => setStatus('Erreur de chargement : ' + ((e.error && e.error.message) || e.url || 'voir console')));
-    setTimeout(() => { if (status.textContent.indexOf('chargement du tileset') === 0)
-      setStatus('Toujours en chargement après 8 s (F12 → Console/Réseau).'); }, 8000);
+    setStatus('chargement : ' + t.name + '…');
+    tiles.addEventListener('load-root-tileset', () => setStatus(t.name + ' chargé, cadrage…'));
+    tiles.addEventListener('load-error', e => setStatus('Erreur : ' + ((e.error && e.error.message) || e.url || 'voir console')));
+    document.querySelectorAll('#tsList .ts').forEach(b => b.classList.toggle('active', +b.dataset.i === current));
   }
+  // boutons de sélection (écran)
+  const list = document.getElementById('tsList');
+  TILESETS.forEach((t, i) => { const b = document.createElement('button'); b.className='ts'; b.dataset.i=i;
+    b.textContent = t.name; b.addEventListener('click', () => loadTileset(i)); list.appendChild(b); });
 
-  // --- déplacement : vol libre XR + clavier/souris sur ordinateur ---
-  let moveSpeed = 6, exitPrev = false;
+  // --- déplacement : vol libre XR (calé sur le regard) + clavier/souris ---
+  let moveSpeed = 6, exitPrev = false, nextPrev = false;
   const keys = {};
   addEventListener('keydown', e => keys[e.code]=true);
   addEventListener('keyup',   e => keys[e.code]=false);
   let dragging=false, px=0, py=0, yaw=0, pitch=0;
   addEventListener('mousedown', e=>{ if(e.target && e.target.closest && e.target.closest('#ui')) return; dragging=true; px=e.clientX; py=e.clientY; });
   addEventListener('mouseup', ()=> dragging=false);
-  addEventListener('mousemove', e=>{ if(!dragging) return;
-    yaw -= (e.clientX-px)*0.003; pitch -= (e.clientY-py)*0.003;
-    pitch = Math.max(-1.4, Math.min(1.4, pitch)); px=e.clientX; py=e.clientY; });
+  addEventListener('mousemove', e=>{ if(!dragging) return; yaw-=(e.clientX-px)*0.003; pitch-=(e.clientY-py)*0.003;
+    pitch=Math.max(-1.4,Math.min(1.4,pitch)); px=e.clientX; py=e.clientY; });
   renderer.xr.addEventListener('sessionstart', ()=> camera.rotation.set(0,0,0));
 
   function updateMove(dt){
     if (renderer.xr.isPresenting){
       const session = renderer.xr.getSession();
-      let L={x:0,y:0}, R={x:0,y:0}, boost=1, exit=false;
+      let L={x:0,y:0}, R={x:0,y:0}, boost=1, exit=false, next=false;
       for (const src of session.inputSources){ const gp=src.gamepad; if(!gp) continue;
         const ax=gp.axes, sx=ax.length>=4?ax[2]:ax[0], sy=ax.length>=4?ax[3]:ax[1];
         const dz=v=>Math.abs(v)<0.12?0:v, trig=gp.buttons[0]&&gp.buttons[0].pressed;
         if(src.handedness==='left'){ L.x=dz(sx); L.y=dz(sy); if(trig) boost=4; }
         if(src.handedness==='right'){ R.x=dz(sx); R.y=dz(sy); if(trig) boost=4;
-          if(gp.buttons[5]&&gp.buttons[5].pressed) exit=true; }   // bouton B = quitter la VR
+          if(gp.buttons[4]&&gp.buttons[4].pressed) next=true;   // A = modèle suivant
+          if(gp.buttons[5]&&gp.buttons[5].pressed) exit=true; } // B = quitter la VR
       }
-      if (exit && !exitPrev) session.end();
-      exitPrev = exit;
-      // lire l'orientation du casque DIRECTEMENT dans la matrice monde de la caméra XR
-      // (getWorldQuaternion la recalculerait et renverrait une identité → le vol se figeait)
+      if (next && !nextPrev) loadTileset(current+1); nextPrev = next;
+      if (exit && !exitPrev) session.end(); exitPrev = exit;
+      // orientation du casque lue DIRECTEMENT dans la matrice monde de la caméra XR
       const q=new THREE.Quaternion().setFromRotationMatrix(renderer.xr.getCamera().matrixWorld);
-      const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(q);   // direction du regard, en 3D
-      const rt =new THREE.Vector3(1,0,0).applyQuaternion(q);    // droite du casque
+      const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(q);
+      const rt =new THREE.Vector3(1,0,0).applyQuaternion(q);
       const sp=moveSpeed*boost*dt, mv=new THREE.Vector3();
-      mv.addScaledVector(fwd,-L.y*sp); mv.addScaledVector(rt,L.x*sp);
-      mv.y += -R.y*sp;                                          // stick droit = montée/descente (repère monde)
+      mv.addScaledVector(fwd,-L.y*sp); mv.addScaledVector(rt,L.x*sp); mv.y+=-R.y*sp;
       lastFwd.copy(fwd);
       rig.position.add(mv);
       rig.rotation.y -= R.x * (Math.PI/2) * dt;
     } else {
       camera.rotation.set(pitch, yaw, 0, 'YXZ');
       const sp=moveSpeed*dt*(keys['ShiftLeft']||keys['ShiftRight']?4:1);
-      const fwd=new THREE.Vector3(0,0,-1).applyEuler(new THREE.Euler(pitch,yaw,0,'YXZ'));  // vole dans la direction du regard
+      const fwd=new THREE.Vector3(0,0,-1).applyEuler(new THREE.Euler(pitch,yaw,0,'YXZ'));
       const rt =new THREE.Vector3(1,0,0).applyEuler(new THREE.Euler(0,yaw,0));
       lastFwd.copy(fwd);
       if(keys['KeyW']||keys['KeyZ']) rig.position.addScaledVector(fwd, sp);
@@ -184,11 +197,11 @@
           tiles.group.quaternion.copy(rot);
           tiles.group.position.copy(c).applyQuaternion(rot).multiplyScalar(-1);
           tiles.group.updateMatrixWorld(true);
-          const R = s.radius;
-          rig.position.set(0, Math.min(Math.max(R*0.15,1.6),200), Math.min(Math.max(R*0.6,4),900));
-          moveSpeed = Math.min(Math.max(R/20,1.5),120);
+          const Rd = s.radius;
+          rig.position.set(0, Math.min(Math.max(Rd*0.15,1.6),200), Math.min(Math.max(Rd*0.6,4),900));
+          moveSpeed = Math.min(Math.max(Rd/20,1.5),120);
           framed = true;
-          setStatus('tileset chargé (rayon ≈ ' + Math.round(R) + ' m)');
+          setStatus(TILESETS[current].name + ' chargé (rayon ≈ ' + Math.round(Rd) + ' m)');
         }
       }
     }
@@ -207,8 +220,7 @@
   addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
     if (tiles) tiles.setResolutionFromRenderer(camera, renderer); });
 
-  if (ION_ASSET_ID===0 || ION_TOKEN==='COLLE_TON_TOKEN') setStatus('renseigne ION_ASSET_ID (ex. 5112317) et ION_TOKEN, puis recharge.');
-  else initTiles();
+  loadTileset(0);
 </script>
 </body>
 </html>
