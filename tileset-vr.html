@@ -109,11 +109,12 @@
 
   // --- gestion des tilesets ---
   let tiles = null, framed = false, current = -1;
+  let recentered = false, loadEnded = false, framedAt = 0;
   function loadTileset(i){
     i = (i % TILESETS.length + TILESETS.length) % TILESETS.length;
     const t = TILESETS[i];
     if (!t.token || t.token.indexOf('COLLE') === 0 || !t.assetId){ setStatus('Renseigne Asset ID + token pour « ' + t.name +' »'); return; }
-    current = i; framed = false;
+    current = i; framed = false; recentered = false; loadEnded = false;
     if (tiles){ scene.remove(tiles.group); tiles.dispose(); tiles = null; }
     tiles = new TilesRenderer();
     tiles.errorTarget = 1;
@@ -126,6 +127,7 @@
     setStatus('chargement : ' + t.name + '…');
     tiles.addEventListener('load-root-tileset', () => setStatus(t.name + ' chargé, cadrage…'));
     tiles.addEventListener('load-error', e => setStatus('Erreur : ' + ((e.error && e.error.message) || e.url || 'voir console')));
+    tiles.addEventListener('tiles-load-end', () => { loadEnded = true; });
     document.querySelectorAll('#tsList .ts').forEach(b => b.classList.toggle('active', +b.dataset.i === current));
   }
   // boutons de sélection (écran)
@@ -183,6 +185,33 @@
     }
   }
 
+  // --- cadrage ---
+  // Place la caméra à distance D (emprise horizontale) d'un modèle de hauteur h posé sur la grille,
+  // et oriente le regard vers son centre.
+  function frameView(D, h){
+    const dist   = Math.min(Math.max(D*0.75, 4), 3000);
+    const height = Math.min(Math.max(D*0.35, 1.6), 1500) + h;
+    rig.position.set(0, height, dist);
+    rig.rotation.set(0, 0, 0);
+    yaw = 0; pitch = -Math.atan2(height - h*0.5, dist);
+    moveSpeed = Math.min(Math.max(D/20, 1.5), 120);
+  }
+  // Recentrage sur la géométrie réellement chargée : le volume englobant racine du tileset
+  // (souvent la région de reconstruction Metashape) peut être bien plus large que le maillage.
+  function recenterOnContent(){
+    tiles.group.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(tiles.group);
+    if (box.isEmpty()) return false;
+    const ctr = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+    tiles.group.position.x -= ctr.x;
+    tiles.group.position.z -= ctr.z;
+    tiles.group.position.y -= box.min.y;          // point le plus bas posé sur la grille
+    tiles.group.updateMatrixWorld(true);
+    frameView(Math.max(size.x, size.z), size.y);
+    setStatus(TILESETS[current].name + ' centré (' + Math.round(size.x) + ' × ' + Math.round(size.z) + ' m)');
+    return true;
+  }
+
   const clock = new THREE.Clock();
   renderer.setAnimationLoop(()=>{
     const dt = Math.min(clock.getDelta(), 0.1);
@@ -199,11 +228,13 @@
           tiles.group.position.copy(c).applyQuaternion(rot).multiplyScalar(-1);
           tiles.group.updateMatrixWorld(true);
           const Rd = s.radius;
-          rig.position.set(0, Math.min(Math.max(Rd*0.15,1.6),200), Math.min(Math.max(Rd*0.6,4),900));
-          moveSpeed = Math.min(Math.max(Rd/20,1.5),120);
-          framed = true;
-          setStatus(TILESETS[current].name + ' chargé (rayon ≈ ' + Math.round(Rd) + ' m)');
+          frameView(Rd*1.4, 0);                     // cadrage provisoire sur la sphère englobante
+          framed = true; framedAt = performance.now();
+          setStatus(TILESETS[current].name + ' chargé (rayon ≈ ' + Math.round(Rd) + ' m), centrage…');
         }
+      } else if (!recentered && tiles.group.children.length > 0 &&
+                 (loadEnded || performance.now() - framedAt > 5000)){
+        recentered = recenterOnContent();
       }
     }
     if ((frameCount++ % 10) === 0){
